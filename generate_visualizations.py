@@ -6,31 +6,53 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
 from sklearn.metrics import roc_curve, auc, confusion_matrix, precision_recall_curve
 from PIL import Image
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from main import build_resnet50, CONFIG, ChestXrayDataset, get_transforms
+from main import build_resnet50, CONFIG, get_transforms
 
 OUTPUT_DIR = os.path.join("data", "submission_visualizations")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 print(f"Output folder ready: {OUTPUT_DIR}")
 
+class ChestXrayDataset(Dataset):
+    """Loads images from train/0/ and train/1/ subdirectories."""
+    def __init__(self, df, image_root, transform=None):
+        self.df = df.reset_index(drop=True)
+        self.image_root = Path(image_root)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        label = int(row["Label"])
+        fname = row["Filename"]
+        img = Image.open(self.image_root / str(label) / fname).convert("RGB")
+        if self.transform:
+            img = self.transform(img)
+        return img, label, fname
+
 def get_label_counts(csv_path):
     df = pd.read_csv(csv_path)
     return int((df["Label"] == 0).sum()), int((df["Label"] == 1).sum())
 
-def load_splits(csv_path, image_dir, val_frac=0.2):
+def load_splits(csv_path, image_root, val_frac=0.2):
     df = pd.read_csv(csv_path)
     train_tf, val_tf = get_transforms()
-    full = ChestXrayDataset(df, image_dir, transform=train_tf)
-    val_size = int(len(full) * val_frac)
-    train_size = len(full) - val_size
-    train_ds, _ = random_split(full, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-    val_full = ChestXrayDataset(df, image_dir, transform=val_tf)
-    _, val_ds = random_split(val_full, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-    return train_ds, val_ds
+    val_size = int(len(df) * val_frac)
+    train_size = len(df) - val_size
+    g = torch.Generator().manual_seed(42)
+    train_df = df.iloc[:train_size].reset_index(drop=True)
+    val_df   = df.iloc[train_size:].reset_index(drop=True)
+    return (
+        ChestXrayDataset(train_df, image_root, transform=train_tf),
+        ChestXrayDataset(val_df,   image_root, transform=val_tf),
+    )
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
     model.train()
@@ -110,27 +132,25 @@ def save_label_distribution(normal, phobia):
     ax.spines[["top","right"]].set_visible(False)
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "label_distribution.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}")
 
 def save_training_curves(history):
     epochs = range(1, len(history["train_loss"])+1)
     fig, (ax1,ax2) = plt.subplots(1,2,figsize=(12,5))
     ax1.plot(epochs, history["train_loss"], label="Train", color="#4C9BE8", linewidth=2)
-    ax1.plot(epochs, history["val_loss"], label="Val", color="#E8654C", linewidth=2, linestyle="--")
+    ax1.plot(epochs, history["val_loss"],   label="Val",   color="#E8654C", linewidth=2, linestyle="--")
     ax1.set_title("Loss over Epochs", fontsize=13, fontweight="bold")
     ax1.set_xlabel("Epoch"); ax1.set_ylabel("BCE Loss"); ax1.legend()
     ax1.spines[["top","right"]].set_visible(False)
     ax2.plot(epochs, history["train_acc"], label="Train", color="#4C9BE8", linewidth=2)
-    ax2.plot(epochs, history["val_acc"], label="Val", color="#E8654C", linewidth=2, linestyle="--")
+    ax2.plot(epochs, history["val_acc"],   label="Val",   color="#E8654C", linewidth=2, linestyle="--")
     ax2.set_title("Accuracy over Epochs", fontsize=13, fontweight="bold")
     ax2.set_xlabel("Epoch"); ax2.set_ylabel("Accuracy"); ax2.set_ylim(0,1.05); ax2.legend()
     ax2.spines[["top","right"]].set_visible(False)
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "training_curves.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}")
 
 def save_roc_curve(y_true, y_probs):
@@ -145,8 +165,7 @@ def save_roc_curve(y_true, y_probs):
     ax.spines[["top","right"]].set_visible(False)
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "roc_curve.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}  (AUC={roc_auc:.3f})")
 
 def save_precision_recall(y_true, y_probs):
@@ -156,13 +175,11 @@ def save_precision_recall(y_true, y_probs):
     ax.plot(recall, precision, color="#6DBE6D", linewidth=2.5, label=f"AP = {pr_auc:.3f}")
     ax.set_title("Precision-Recall Curve", fontsize=14, fontweight="bold")
     ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
-    ax.legend(loc="upper right", fontsize=12)
-    ax.set_xlim([0,1]); ax.set_ylim([0,1.05])
+    ax.legend(loc="upper right", fontsize=12); ax.set_xlim([0,1]); ax.set_ylim([0,1.05])
     ax.spines[["top","right"]].set_visible(False)
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "precision_recall_curve.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}  (AP={pr_auc:.3f})")
 
 def save_confusion_matrix(y_true, y_probs):
@@ -182,22 +199,23 @@ def save_confusion_matrix(y_true, y_probs):
     ax.set_ylabel("True Label"); ax.set_xlabel("Predicted Label")
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "confusion_matrix.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}")
 
-def save_sample_predictions(y_probs, y_true, fnames, image_dir, n=8):
+def save_sample_predictions(y_probs, y_true, fnames, image_root, n=8):
     y_preds = (y_probs > 0.5).astype(int)
     correct_idx = np.where(y_preds == y_true)[0][:n//2]
     wrong_idx   = np.where(y_preds != y_true)[0][:n//2]
     fig, axes = plt.subplots(2, n//2, figsize=(14,6))
     fig.suptitle("Sample Predictions  |  Green = Correct   Red = Incorrect", fontsize=13, fontweight="bold")
     labels_map = {0:"Normal", 1:"Phobia"}
+    root = Path(image_root)
     for row, (group, title) in enumerate([(correct_idx,"Correct"),(wrong_idx,"Incorrect")]):
         for col, idx in enumerate(group):
             ax = axes[row][col]
             try:
-                ax.imshow(Image.open(os.path.join(image_dir, fnames[idx])).convert("RGB"), cmap="gray")
+                label = int(y_true[idx])
+                ax.imshow(Image.open(root / str(label) / fnames[idx]).convert("RGB"))
             except Exception:
                 ax.text(0.5, 0.5, "N/A", ha="center", va="center")
             color = "#2ECC71" if row == 0 else "#E74C3C"
@@ -206,39 +224,33 @@ def save_sample_predictions(y_probs, y_true, fnames, image_dir, n=8):
         axes[row][0].set_ylabel(title, fontsize=11, fontweight="bold")
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "sample_predictions.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}")
 
-def save_gradcam(model, y_true, fnames, image_dir, device, n=4):
+def save_gradcam(model, y_true, fnames, image_root, device, n=4):
     cam_extractor = GradCAM(model)
     _, val_tf = get_transforms()
     fig, axes = plt.subplots(2, n, figsize=(14,6))
     plt.suptitle("Grad-CAM — Model Attention on Chest X-Rays", fontsize=13, fontweight="bold")
+    root = Path(image_root)
     plotted = 0
     for idx in range(len(fnames)):
         if plotted >= n:
             break
         try:
-            raw_img = Image.open(os.path.join(image_dir, fnames[idx])).convert("RGB")
+            label = int(y_true[idx])
+            raw_img = Image.open(root / str(label) / fnames[idx]).convert("RGB")
         except Exception:
             continue
         tensor = val_tf(raw_img).unsqueeze(0).to(device)
         heatmap = cam_extractor.generate(tensor)
         heatmap_r = np.array(Image.fromarray((heatmap*255).astype(np.uint8)).resize(raw_img.size, Image.BILINEAR)) / 255.0
-        label_name = "Phobia" if y_true[idx] == 1 else "Normal"
-        axes[0][plotted].imshow(raw_img, cmap="gray")
-        axes[0][plotted].set_title(f"Original\n({label_name})", fontsize=9)
-        axes[0][plotted].axis("off")
-        axes[1][plotted].imshow(raw_img, cmap="gray")
-        axes[1][plotted].imshow(heatmap_r, cmap="jet", alpha=0.45)
-        axes[1][plotted].set_title("Grad-CAM", fontsize=9)
-        axes[1][plotted].axis("off")
+        axes[0][plotted].imshow(raw_img); axes[0][plotted].set_title(f"Original\n({'Phobia' if label==1 else 'Normal'})", fontsize=9); axes[0][plotted].axis("off")
+        axes[1][plotted].imshow(raw_img); axes[1][plotted].imshow(heatmap_r, cmap="jet", alpha=0.45); axes[1][plotted].set_title("Grad-CAM", fontsize=9); axes[1][plotted].axis("off")
         plotted += 1
     plt.tight_layout()
     path = os.path.join(OUTPUT_DIR, "gradcam.png")
-    plt.savefig(path, dpi=150)
-    plt.close()
+    plt.savefig(path, dpi=150); plt.close()
     print(f"Saved: {path}")
 
 def main():
@@ -251,11 +263,11 @@ def main():
     save_label_distribution(normal_count, phobia_count)
 
     train_ds, val_ds = load_splits("train/train_label.csv", "train")
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0)
 
     model = build_resnet50().to(device)
-    print(f"\nTraining for {epochs} epoch(s)...\n")
+    print(f"Training for {epochs} epoch(s)...\n")
     history, model = run_training(model, train_loader, val_loader, epochs, device)
 
     criterion = nn.BCEWithLogitsLoss()
@@ -268,7 +280,7 @@ def main():
     save_confusion_matrix(y_true, y_probs)
     save_sample_predictions(y_probs, y_true, fnames, "train")
     save_gradcam(model, y_true, fnames, "train", device)
-    print(f"\nDone! Check: {OUTPUT_DIR}/")
+    print(f"\nAll done! Visualizations in: {OUTPUT_DIR}/")
 
 if __name__ == "__main__":
     main()
