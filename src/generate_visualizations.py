@@ -254,7 +254,7 @@ def save_gradcam(model, y_true, fnames, image_root, device, n=4):
     print(f"Saved: {path}")
 
 def main():
-    device = CONFIG["device"]
+    device = "mps"
     epochs = CONFIG.get("epochs", 5)
     batch_size = CONFIG.get("batch_size", 32)
     print(f"Device: {device} | Epochs: {epochs} | Batch: {batch_size}\n")
