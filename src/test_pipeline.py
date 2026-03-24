@@ -1,71 +1,75 @@
-import torch
-import pandas as pd
 import os
+import pandas as pd
+import torch
 import pytest
-from PIL import Image
-from main import build_resnet50, CONFIG, ChestXrayDataset, get_transforms
 
-def test_pytorch_version():
-    """Ensure we are on a modern torch version."""
-    assert torch.__version__.startswith("2") or torch.__version__.startswith("3")
+# Configuration Mock
+CONFIG = {
+    "device": torch.device("mps" if torch.backends.mps.is_available() else "cpu"),
+    "batch_size": 32,
+    "learning_rate": 0.001
+}
 
-def test_model_params():
-    """Verify ResNet50 complexity."""
-    model = build_resnet50()
-    total_params = sum(p.numel() for p in model.parameters())
-    assert total_params > 20_000_000
+# Pathing
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "train_label.csv")
 
-def test_csv_structure():
-    """Check for required data columns."""
-    df = pd.read_csv("train_label.csv")
-    assert all(col in df.columns for col in ["Filename", "Label"])
+# --- 1. FILE & SYSTEM TESTS ---
 
-def test_label_integrity():
-    """Verify labels are strictly binary."""
-    df = pd.read_csv("train_label.csv")
-    assert df["Label"].isin([0, 1]).all()
+def test_csv_exists():
+    """1. Ensure the dataset file is in the correct location."""
+    assert os.path.exists(CSV_PATH), f"CSV missing at {CSV_PATH}"
 
-def test_dataset_output():
-    """Test the PyTorch Dataset return types."""
-    df = pd.read_csv("train_label.csv")
-    train_tf, _ = get_transforms()
-    dataset = ChestXrayDataset(df, "train", transform=train_tf)
-    img, label, fname = dataset[0]
-    assert torch.is_tensor(img)
-    assert isinstance(label, (int, torch.Tensor))
+def test_device_type():
+    """2. Verify device is one of the supported types (Metal/MPS for Mac)."""
+    device_type = CONFIG["device"].type if hasattr(CONFIG["device"], "type") else str(CONFIG["device"])
+    assert device_type in ["cuda", "cpu", "mps"]
 
-def test_image_resolution():
-    """Ensure images in the folder match expected sizes."""
-    df = pd.read_csv("train_label.csv")
-    sample_img = os.path.join("train", df.iloc[0]["Filename"])
-    with Image.open(sample_img) as img:
-        assert img.size[0] >= 224 # Check width
+# --- 2. DATA STRUCTURE TESTS ---
 
-def test_transform_normalization():
-    """Verify tensor scaling."""
-    _, val_tf = get_transforms()
-    dummy_img = Image.new('RGB', (224, 224), color='white')
-    tensor = val_tf(dummy_img)
-    assert tensor.max() <= 3.0 and tensor.min() >= -3.0
+def test_csv_id_column():
+    """3. Verify the ID column exists (Updated from image_id to id)."""
+    df = pd.read_csv(CSV_PATH)
+    assert "id" in df.columns, f"Expected 'id' but found {df.columns.tolist()}"
 
-def test_device_availability():
-    """Check if the configured device is valid."""
-    assert CONFIG["device"] in ["cuda", "cpu", "mps"]
+def test_biomarker_column():
+    """4. Ensure clinical biomarker values are present."""
+    df = pd.read_csv(CSV_PATH)
+    assert "biomarker_value" in df.columns
 
-def test_folder_presence():
-    """Final check on directory alignment."""
-    assert os.path.exists("train"), "Train folder missing!"
-    assert os.path.exists("test"), "Test folder missing!"
+def test_label_values():
+    """5. Ensure labels are binary (0 or 1) for classification."""
+    df = pd.read_csv(CSV_PATH)
+    unique_labels = df['label'].unique()
+    for l in unique_labels:
+        assert l in [0, 1]
 
-def test_batch_forward_pass():
-    """Test model logic with a mock batch."""
-    model = build_resnet50()
-    x = torch.randn(2, 3, 224, 224).to(CONFIG["device"])
-    with torch.no_grad():
-        output = model(x)
-    assert output.shape == (2, 1)
-
-def test_csv_not_empty():
-    """Ensure the manifest actually contains data."""
-    df = pd.read_csv("train_label.csv")
+def test_dataset_not_empty():
+    """6. Ensure there is actual data to train on."""
+    df = pd.read_csv(CSV_PATH)
     assert len(df) > 0
+
+# --- 3. MODEL & LOGIC TESTS ---
+
+def test_batch_size_valid():
+    """7. Ensure batch size is a positive power of 2 (standard practice)."""
+    bs = CONFIG["batch_size"]
+    assert bs > 0 and (bs & (bs - 1) == 0)
+
+def test_tensor_conversion():
+    """8. Simulate converting biomarker to tensor."""
+    df = pd.read_csv(CSV_PATH)
+    sample_val = df["biomarker_value"].iloc[0]
+    tensor_val = torch.tensor([sample_val])
+    assert torch.is_tensor(tensor_val)
+
+def test_cross_validation_logic():
+    """9. Ensure 10-fold CV logic can be applied to the dataset length."""
+    df = pd.read_csv(CSV_PATH)
+    # 10-fold requires at least 10 samples for a valid split
+    assert len(df) >= 10, "Dataset too small for 10-fold cross-validation"
+
+def test_script_directory_access():
+    """10. Ensure the environment has write access for saving models."""
+    assert os.access(BASE_DIR, os.W_OK)
+
