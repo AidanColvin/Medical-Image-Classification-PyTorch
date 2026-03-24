@@ -259,10 +259,10 @@ def main():
     batch_size = CONFIG.get("batch_size", 32)
     print(f"Device: {device} | Epochs: {epochs} | Batch: {batch_size}\n")
 
-    normal_count, phobia_count = get_label_counts("train/train_label.csv")
+    normal_count, phobia_count = get_label_counts(os.path.join(os.path.dirname(os.path.abspath(__file__)), "train", "train_label.csv"))
     save_label_distribution(normal_count, phobia_count)
 
-    train_ds, val_ds = load_splits("train/train_label.csv", "train")
+    train_ds, val_ds = load_splits(os.path.join(os.path.dirname(os.path.abspath(__file__)), "train", "train_label.csv"), os.path.join(os.path.dirname(os.path.abspath(__file__)), "train"))
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0)
 
