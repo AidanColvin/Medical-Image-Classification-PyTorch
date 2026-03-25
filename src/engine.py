@@ -6,8 +6,7 @@ from torchvision import datasets, transforms, models
 from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import confusion_matrix, roc_curve, auc, accuracy_score
+from sklearn.metrics import roc_curve, auc, accuracy_score
 from PIL import Image
 
 def run_pipeline(train_path, test_path, device):
@@ -21,10 +20,9 @@ def run_pipeline(train_path, test_path, device):
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
-    # Data Loading logic
+    # Dataset Loading
     full_dataset = datasets.ImageFolder(train_path, transform=transform)
-    dataset = Subset(full_dataset, range(len(full_dataset)))
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+    loader = DataLoader(full_dataset, batch_size=32, shuffle=True)
 
     model = models.resnet18(weights='DEFAULT')
     model.fc = nn.Linear(model.fc.in_features, 1)
@@ -32,8 +30,7 @@ def run_pipeline(train_path, test_path, device):
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.BCEWithLogitsLoss()
 
-    # Training Loop
-    print(f"Training for 5 Epochs...")
+    # Training
     history = {'loss': [], 'acc': []}
     for epoch in range(5):
         model.train()
@@ -52,29 +49,25 @@ def run_pipeline(train_path, test_path, device):
         history['acc'].append(epoch_acc)
         history['loss'].append(loss.item())
 
-    # Visualizations
-    plt.figure(figsize=(6, 5))
+    # Curves
     fpr, tpr, _ = roc_curve(all_labels, all_probs)
-    plt.plot(fpr, tpr, label=f'AUC = {auc(fpr, tpr):.2f}')
+    plt.figure()
+    plt.plot(fpr, tpr)
     plt.savefig(f'{vis_dir}/roc_curve.png')
     plt.close()
 
-    plt.figure(figsize=(6, 5))
-    plt.plot(range(1, 6), history['loss'], label='Loss')
-    plt.plot(range(1, 6), history['acc'], label='Accuracy')
-    plt.legend()
-    plt.savefig(f'{vis_dir}/metrics_curve.png')
-    plt.close()
-
-    # Inference (Fixed to ensure results are captured)
+    # Inference logic
     results = []
-    print(f"Running inference on: {test_path}")
-    if os.path.isdir(test_path):
+    if not os.path.exists(test_path):
+        print(f"ERROR: Test path {test_path} does not exist.")
+    else:
+        test_files = [f for f in os.listdir(test_path) if f.endswith('.png')]
+        print(f"Found {len(test_files)} images in {test_path}")
+        
         model.eval()
-        files = [f for f in os.listdir(test_path) if f.endswith('.png')]
-        for f in tqdm(files, desc="Inference"):
+        for f in tqdm(test_files, desc="Inference"):
             try:
-                # Expecting format test_<id>.png
+                # Extracts ID from 'test_123.png'
                 img_id = int(f.split('_')[1].split('.')[0])
                 img = Image.open(os.path.join(test_path, f)).convert('RGB')
                 img_t = transform(img).unsqueeze(0).to(device)
@@ -84,9 +77,14 @@ def run_pipeline(train_path, test_path, device):
             except Exception as e:
                 continue
 
-    # Final Save Logic
-    df_sub = pd.DataFrame(results).sort_values('id') if results else pd.DataFrame(columns=['id', 'label'])
+    # THE FIX: Force save even if empty to avoid 0-byte files
+    df_sub = pd.DataFrame(results)
+    if not df_sub.empty:
+        df_sub = df_sub.sort_values('id')
+    
+    # Save to both locations
     df_sub.to_csv('submission.csv', index=False)
     df_sub.to_csv('data/submissions/final_results_table.csv', index=False)
+    print(f"Successfully saved {len(df_sub)} rows to submission.csv")
 
     return history['acc'][-1], auc(fpr, tpr), len(results)
