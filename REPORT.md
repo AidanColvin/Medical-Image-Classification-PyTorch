@@ -18,10 +18,3 @@
 ![ROC Curve](data/visualizations/roc_curve.png)
 
 ![PR Curve](data/visualizations/pr_curve.png)
-
-## Data Tables
-### Final Results Sample
-The full output is available in `data/submissions/final_results_table.csv`.
-
-| id   | label   |
-|------|---------|
