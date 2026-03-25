@@ -1,19 +1,25 @@
-# Medical Image Classification: Master Report
-**Status:** All Visuals & Tables Regenerated (5-Fold CV)
+# Medical Image Analysis: Final Technical Report
+**Generated:** 2026-03-25 11:53:32.875479
 
-## 1. Classification Performance
-### Confusion Matrix
-Determines how often the model correctly identifies Pneumonia vs. Normal cases.
+## 1. Diagnostic Performance
+The model was validated using a 5-Fold Cross-Validation strategy.
+
+### Confusion Matrix (Normal vs Pneumonia)
 ![CM](data/visualizations/confusion_matrix.png)
 
-### AUC/ROC
+### Precision-Recall Analysis
+![PR](data/visualizations/precision_recall.png)
+
+### ROC/AUC Performance
 ![AUC](data/visualizations/auc_curve.png)
 
-## 2. Component Impact
-The following table shows the mean absolute weights of each network layer.
-| Layer    |     Value |
-|:---------|----------:|
-| 0.weight | 0.1034    |
-| 9.weight | 0.0540029 |
-| 3.weight | 0.0504344 |
-| 7.weight | 0.0117363 |
+## 2. Feature & Layer Importance
+Determines which convolutional stages were most active during classification.
+| Layer    |   Weight_Impact |
+|:---------|----------------:|
+| 0.weight |       0.0961452 |
+| 9.weight |       0.052582  |
+| 3.weight |       0.0509063 |
+| 7.weight |       0.0123192 |
+
+*Full data tables for all visualizations are stored in `data/tables/`.*
