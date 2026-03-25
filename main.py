@@ -12,15 +12,31 @@ def main():
 
     with open('REPORT.md', 'w') as f:
         f.write("# Medical Image Classification Report\n\n")
-        f.write("## Performance Metrics\n")
+        
+        f.write("## Performance Summary\n")
         f.write(f"| Metric | Result |\n| :--- | :--- |\n| Accuracy | **{acc:.2%}** |\n| AUC | **{auc_score:.2f}** |\n| Test Images Processed | **{count}** |\n\n")
+        
         f.write("## Visualizations\n")
-        f.write("### Confusion Matrix\n![CM](data/visualizations/confusion_matrix.png)\n\n")
-        f.write("### ROC Curve\n![ROC](data/visualizations/roc_curve.png)\n\n")
-        f.write("### Training Metrics\n![Metrics](data/visualizations/metrics_curve.png)\n")
+        f.write("### Training Progress\n")
+        f.write("![Loss Curve](data/visualizations/loss_curve.png)\n")
+        f.write("![Metrics Curve](data/visualizations/metrics_curve.png)\n\n")
+        
+        f.write("### Model Performance Analysis\n")
+        f.write("![Confusion Matrix](data/visualizations/confusion_matrix.png)\n\n")
+        f.write("![ROC Curve](data/visualizations/roc_curve.png)\n\n")
+        f.write("![PR Curve](data/visualizations/pr_curve.png)\n\n")
 
-    print(f"Re-run complete. Accuracy: {acc:.2%}")
-    print(f"Submission count: {count}")
+        f.write("## Data Tables\n")
+        f.write("### Final Results Sample\n")
+        f.write("The full output is available in `data/submissions/final_results_table.csv`.\n\n")
+        
+        # Reading the first 5 rows of the generated table to display in the report
+        if os.path.exists('data/submissions/final_results_table.csv'):
+            import pandas as pd
+            sample_df = pd.read_csv('data/submissions/final_results_table.csv').head(5)
+            f.write(sample_df.to_markdown(index=False))
+
+    print(f"Re-run complete. Report updated with all visuals and tables.")
 
 if __name__ == "__main__":
     main()

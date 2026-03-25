@@ -1,18 +1,27 @@
 # Medical Image Classification Report
 
-## Performance Metrics
+## Performance Summary
 | Metric | Result |
 | :--- | :--- |
-| Accuracy | **99.83%** |
+| Accuracy | **99.73%** |
 | AUC | **1.00** |
 | Test Images Processed | **0** |
 
 ## Visualizations
-### Confusion Matrix
-![CM](data/visualizations/confusion_matrix.png)
+### Training Progress
+![Loss Curve](data/visualizations/loss_curve.png)
+![Metrics Curve](data/visualizations/metrics_curve.png)
 
-### ROC Curve
-![ROC](data/visualizations/roc_curve.png)
+### Model Performance Analysis
+![Confusion Matrix](data/visualizations/confusion_matrix.png)
 
-### Training Metrics
-![Metrics](data/visualizations/metrics_curve.png)
+![ROC Curve](data/visualizations/roc_curve.png)
+
+![PR Curve](data/visualizations/pr_curve.png)
+
+## Data Tables
+### Final Results Sample
+The full output is available in `data/submissions/final_results_table.csv`.
+
+| id   | label   |
+|------|---------|
