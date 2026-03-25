@@ -14,6 +14,7 @@ from PIL import Image
 def run_pipeline(train_path, test_path, device):
     vis_dir = 'data/visualizations'
     os.makedirs(vis_dir, exist_ok=True)
+    os.makedirs('data/submissions', exist_ok=True)
     
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -21,14 +22,12 @@ def run_pipeline(train_path, test_path, device):
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
-    # 1. Load Dataset
     full_dataset = datasets.ImageFolder(train_path, transform=transform)
     valid_indices = [i for i, (p, l) in enumerate(full_dataset.imgs) 
                      if os.path.basename(os.path.dirname(p)) in ['0', '1']]
     dataset = Subset(full_dataset, valid_indices)
     loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
-    # 2. Model & Training (5 Epochs)
     model = models.resnet18(weights='DEFAULT')
     model.fc = nn.Linear(model.fc.in_features, 1)
     model.to(device)
@@ -40,10 +39,8 @@ def run_pipeline(train_path, test_path, device):
     print(f"🚀 Training for 5 Epochs...")
     for epoch in range(5):
         model.train()
-        epoch_loss, correct, total = 0, 0, 0
+        epoch_loss, all_probs, all_labels = 0, [], []
         pbar = tqdm(loader, desc=f"Epoch {epoch+1}/5")
-        all_probs, all_labels = [], []
-        
         for imgs, labels in pbar:
             imgs, labels = imgs.to(device), labels.to(device).float().view(-1, 1)
             optimizer.zero_grad()
@@ -51,47 +48,31 @@ def run_pipeline(train_path, test_path, device):
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-            
             epoch_loss += loss.item()
-            probs = torch.sigmoid(outputs)
-            all_probs.extend(probs.detach().cpu().numpy())
+            all_probs.extend(torch.sigmoid(outputs).detach().cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
-            
+        
         history['loss'].append(epoch_loss / len(loader))
         history['acc'].append(accuracy_score(all_labels, [1 if p > 0.5 else 0 for p in all_probs]))
 
-    # 3. Generate Visuals (Strictly to data/visualizations)
-    # Plot 1: Confusion Matrix
+    # Visuals
     plt.figure(figsize=(6, 5))
-    cm = confusion_matrix(all_labels, [1 if p > 0.5 else 0 for p in all_probs])
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.title("Final Confusion Matrix")
+    sns.heatmap(confusion_matrix(all_labels, [1 if p > 0.5 else 0 for p in all_probs]), annot=True, fmt='d', cmap='Blues')
     plt.savefig(f'{vis_dir}/confusion_matrix.png')
-    plt.close()
-
-    # Plot 2: ROC Curve
+    
     fpr, tpr, _ = roc_curve(all_labels, all_probs)
     plt.figure(figsize=(6, 5))
-    plt.plot(fpr, tpr, color='orange', label=f'AUC = {auc(fpr, tpr):.2f}')
-    plt.plot([0, 1], [0, 1], 'k--')
-    plt.title('ROC Curve')
-    plt.legend()
+    plt.plot(fpr, tpr, label=f'AUC = {auc(fpr, tpr):.2f}')
+    plt.plot([0, 1], 'k--')
     plt.savefig(f'{vis_dir}/roc_curve.png')
-    plt.close()
 
-    # Plot 3: Loss & Accuracy Curves
-    fig, ax1 = plt.subplots(figsize=(6, 5))
-    ax1.set_xlabel('Epoch')
-    ax1.set_ylabel('Loss', color='tab:red')
-    ax1.plot(range(1, 6), history['loss'], color='tab:red', label='Loss')
-    ax2 = ax1.twinx()
-    ax2.set_ylabel('Accuracy', color='tab:blue')
-    ax2.plot(range(1, 6), history['acc'], color='tab:blue', label='Accuracy')
-    plt.title('Training Metrics')
+    plt.figure(figsize=(6, 5))
+    plt.plot(range(1, 6), history['loss'], label='Loss')
+    plt.plot(range(1, 6), history['acc'], label='Accuracy')
+    plt.legend()
     plt.savefig(f'{vis_dir}/metrics_curve.png')
-    plt.close()
 
-    # 4. Save Prediction Table (CSV)
+    # Inference
     results = []
     if os.path.isdir(test_path):
         model.eval()
