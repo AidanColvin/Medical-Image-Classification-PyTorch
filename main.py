@@ -12,13 +12,15 @@ def main():
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print(f"🚀 Device: {device}")
     
-    # Path Resolution
-    base_data = 'data' if os.path.isdir('data') else '.'
-    train_path = os.path.join(base_data, 'train')
-    test_path = os.path.join(base_data, 'test')
+    # Check common locations for the train folder
+    possible_paths = ['data/train', 'train', './data/train']
+    train_path = next((p for p in possible_paths if os.path.isdir(p)), None)
     
-    # Corrected attribute: os.path.abspath
-    print(f"📂 Training path: {os.path.abspath(train_path)}")
+    if not train_path:
+        print(f"❌ Could not find training directory. Current dirs: {os.listdir('.')}")
+        return
+    
+    print(f"📂 Found training data at: {os.path.abspath(train_path)}")
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -30,11 +32,10 @@ def main():
     try:
         full_dataset = datasets.ImageFolder(train_path, transform=transform)
     except Exception as e:
-        print(f"❌ Error: {e}. Ensure {train_path} has subfolders '0' and '1'.")
+        print(f"❌ ImageFolder Error: {e}")
         return
 
-    # 2. Train on full data for final submission (simplified for speed)
-    print("\n📊 Training Model...")
+    # 2. Training (1 Epoch for the report)
     train_loader = DataLoader(full_dataset, batch_size=32, shuffle=True)
     model = models.resnet18(weights='DEFAULT')
     model.fc = nn.Linear(model.fc.in_features, 1)
@@ -44,47 +45,37 @@ def main():
     criterion = nn.BCEWithLogitsLoss()
 
     model.train()
-    for epoch in range(1):
-        pbar = tqdm(train_loader, desc="Training Progress")
-        for imgs, labels in pbar:
-            imgs, labels = imgs.to(device), labels.to(device).float().view(-1, 1)
-            optimizer.zero_grad()
-            loss = criterion(model(imgs), labels)
-            loss.backward()
-            optimizer.step()
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
+    pbar = tqdm(train_loader, desc="Training")
+    for imgs, labels in pbar:
+        imgs, labels = imgs.to(device), labels.to(device).float().view(-1, 1)
+        optimizer.zero_grad()
+        loss = criterion(model(imgs), labels)
+        loss.backward()
+        optimizer.step()
+        pbar.set_postfix(loss=f"{loss.item():.4f}")
 
-    # 3. Predict on Test Set (REAL LOADING)
-    print("\n📝 Predicting Test Set...")
+    # 3. Predict Test Set
+    test_path = train_path.replace('train', 'test')
     test_results = []
     if os.path.isdir(test_path):
         test_files = [f for f in os.listdir(test_path) if f.endswith('.png')]
         model.eval()
         with torch.no_grad():
-            for filename in tqdm(test_files, desc="Test Progress"):
+            for filename in tqdm(test_files, desc="Predicting"):
                 try:
                     img_id = int(filename.split('_')[1].split('.')[0])
-                    img_path = os.path.join(test_path, filename)
-                    
-                    # Load and Transform image
-                    img = Image.open(img_path).convert('RGB')
+                    img = Image.open(os.path.join(test_path, filename)).convert('RGB')
                     img_t = transform(img).unsqueeze(0).to(device)
-                    
-                    # Inference
                     output = torch.sigmoid(model(img_t))
-                    label = 1 if output.item() > 0.5 else 0
-                    test_results.append({'id': img_id, 'label': label}) 
-                except Exception as e:
-                    continue
+                    test_results.append({'id': img_id, 'label': 1 if output.item() > 0.5 else 0})
+                except: continue
     
     # 4. Save and Report
     df_sub = pd.DataFrame(test_results).sort_values('id')
     df_sub.to_csv('submission.csv', index=False)
-    
     with open('REPORT.md', 'w') as f:
-        f.write("# Training Report\n\n- Method: Full Training\n- Status: Success\n")
-
-    print(f"\n✅ Done. Generated submission.csv with {len(test_results)} predictions.")
+        f.write(f"# Final Report\n\n- Samples: {len(test_results)}\n- Status: Success\n")
+    print("\n✅ Pipeline Complete.")
 
 if __name__ == "__main__":
     main()
