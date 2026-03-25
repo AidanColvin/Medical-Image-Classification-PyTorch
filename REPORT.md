@@ -3,7 +3,7 @@
 ## 📈 Key Metrics
 | Metric | Value |
 | :--- | :--- |
-| Training Accuracy | **98.98%** |
+| Training Accuracy | **98.99%** |
 | ROC AUC Score | **1.00** |
 | Test Samples Predicted | 0 |
 
