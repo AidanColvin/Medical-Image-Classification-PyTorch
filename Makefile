@@ -1,12 +1,22 @@
-test:
-	pytest test_suite.py -W ignore::RuntimeWarning
+export PYTHONPATH := $(shell pwd)
 
-run: test
+.PHONY: test run submit full-pipeline clean
+
+test:
+	pytest tests/test_suite.py -W ignore::RuntimeWarning
+
+run:
 	python3 main.py
 
-ensemble:
-	python3 ensemble_submissions.py
+submit:
+	python3 scripts/generate_submission.py
+
+full-pipeline: test
+	@echo "Tests Passed. Starting Training..."
+	python3 main.py
+	@echo "Training Complete. Generating Submission..."
+	python3 scripts/generate_submission.py
 
 clean:
-	rm -rf __pycache__ .pytest_cache
-	rm -f submission_fold_*.csv
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	rm -rf .pytest_cache
