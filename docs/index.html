@@ -3,33 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Medical-Image-Classification-PyTorch</title>
+    <title>Medical-Image-Classification</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col items-center justify-center font-sans text-slate-900 p-6">
+<body class="bg-white min-h-screen flex flex-col items-center justify-center font-sans text-black p-6">
     
-    <main class="max-w-xl w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-        
-        <h1 class="text-2xl font-black text-center mb-8 text-slate-800 tracking-tight">Medical-Image-Classification-PyTorch</h1>
+    <main class="max-w-xl w-full bg-white p-8 rounded-3xl border-2 border-black">
+        <h1 class="text-3xl font-black text-center mb-8 tracking-tight">Medical-Image-Classification</h1>
 
-        <div id="interactionBox" class="relative border-2 border-dashed border-blue-400 rounded-xl h-64 flex flex-col items-center justify-center text-center bg-blue-50/50 hover:bg-blue-50 cursor-pointer transition-all mb-6">
+        <div id="interactionBox" class="relative border-2 border-dashed border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-white hover:bg-gray-50 cursor-pointer transition-all mb-6">
             <input type="file" id="fileInput" class="hidden" accept="image/*">
-            
             <div id="boxContent" class="pointer-events-none p-4">
-                <svg class="w-10 h-10 text-blue-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                <p class="text-lg font-bold text-blue-700" id="boxTitle">Drag & Drop X-Ray Here</p>
-                <p class="text-sm text-blue-500/80 mt-1" id="boxSubtitle">or click to browse</p>
+                <svg class="w-12 h-12 text-black mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="text-lg font-bold" id="boxTitle">Drag & Drop X-Ray Here</p>
+                <p class="text-sm font-medium mt-1 text-gray-500" id="boxSubtitle">or click to browse</p>
             </div>
+            <canvas id="canvas" width="224" height="224" class="hidden"></canvas>
         </div>
 
-        <button id="runBtn" class="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-blue-600 transition-colors shadow-md disabled:bg-slate-300 disabled:cursor-not-allowed">
-            Run
+        <button id="runBtn" class="w-full py-4 bg-white text-black border-2 border-black rounded-full font-bold text-lg hover:bg-black hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            Run Edge Inference
         </button>
 
-        <p class="mt-8 text-xs text-slate-400 text-center leading-relaxed">
+        <p class="mt-8 text-xs text-gray-500 text-center leading-relaxed font-medium">
             <strong>Disclaimer:</strong> This tool should not be used for medical diagnostics or health decisions. The project objective was to train a model on a large dataset of X-ray images to distinguish between healthy lungs and those exhibiting pneumonia.
         </p>
-
     </main>
 
     <script>
@@ -39,92 +38,107 @@
         const boxTitle = document.getElementById('boxTitle');
         const boxSubtitle = document.getElementById('boxSubtitle');
         const runBtn = document.getElementById('runBtn');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
         let selectedFile = null;
+        let session = null;
 
-        // Box interactions
+        // 1. Load the ONNX model automatically in the background
+        async function loadModel() {
+            try {
+                // Pointing to the model.onnx file in the same directory
+                session = await ort.InferenceSession.create('./model.onnx', { executionProviders: ['wasm'] });
+                console.log('Model loaded successfully.');
+            } catch (e) {
+                console.error('Failed to load model', e);
+                boxSubtitle.textContent = "Error loading model. Check console.";
+            }
+        }
+        loadModel();
+
         interactionBox.addEventListener('click', () => fileInput.click());
-
-        interactionBox.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            interactionBox.classList.add('border-blue-600', 'bg-blue-100');
-        });
-        
-        interactionBox.addEventListener('dragleave', () => {
-            interactionBox.classList.remove('border-blue-600', 'bg-blue-100');
-        });
-        
+        interactionBox.addEventListener('dragover', (e) => { e.preventDefault(); interactionBox.classList.add('bg-gray-100'); });
+        interactionBox.addEventListener('dragleave', () => { interactionBox.classList.remove('bg-gray-100'); });
         interactionBox.addEventListener('drop', (e) => {
-            e.preventDefault();
-            interactionBox.classList.remove('border-blue-600', 'bg-blue-100');
+            e.preventDefault(); interactionBox.classList.remove('bg-gray-100');
             if (e.dataTransfer.files.length) handleFileSelect(e.dataTransfer.files[0]);
         });
-
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length) handleFileSelect(e.target.files[0]);
         });
 
         function handleFileSelect(file) {
             selectedFile = file;
-            boxTitle.textContent = "Image Loaded: " + file.name;
-            boxTitle.className = "text-lg font-bold text-emerald-700";
-            boxSubtitle.textContent = "Ready to run.";
-            interactionBox.className = "relative border-2 border-solid border-emerald-400 rounded-xl h-64 flex flex-col items-center justify-center text-center bg-emerald-50 cursor-pointer transition-all mb-6";
+            boxTitle.textContent = file.name;
+            boxTitle.className = "text-xl font-black";
+            boxSubtitle.textContent = "Ready to analyze locally.";
+            interactionBox.className = "relative border-2 border-solid border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-gray-50 cursor-pointer transition-all mb-6";
         }
 
-        // Run Inference
+        // Image Preprocessing (Matches PyTorch transforms)
+        function processImage(imageElement) {
+            ctx.drawImage(imageElement, 0, 0, 224, 224);
+            const imageData = ctx.getImageData(0, 0, 224, 224).data;
+            const float32Data = new Float32Array(3 * 224 * 224);
+            
+            const mean = [0.485, 0.456, 0.406];
+            const std = [0.229, 0.224, 0.225];
+
+            for (let i = 0; i < 224 * 224; i++) {
+                // Normalize RGB channels
+                float32Data[i] = ((imageData[i * 4] / 255.0) - mean[0]) / std[0]; // R
+                float32Data[i + 224 * 224] = ((imageData[i * 4 + 1] / 255.0) - mean[1]) / std[1]; // G
+                float32Data[i + 2 * 224 * 224] = ((imageData[i * 4 + 2] / 255.0) - mean[2]) / std[2]; // B
+            }
+            return new ort.Tensor('float32', float32Data, [1, 3, 224, 224]);
+        }
+
+        function sigmoid(z) {
+            return 1 / (1 + Math.exp(-z));
+        }
+
         runBtn.addEventListener('click', async () => {
-            if (!selectedFile) {
-                alert("Please drop or select an image first.");
+            if (!selectedFile || !session) {
+                alert("Please select an image and wait for the model to load.");
                 return;
             }
 
-            // Set Loading State
             runBtn.disabled = true;
-            runBtn.textContent = "Analyzing...";
-            boxTitle.textContent = "Running Inference...";
-            boxTitle.className = "text-lg font-bold text-slate-600 animate-pulse";
-            boxSubtitle.textContent = "Processing tensor through ResNet18";
-            interactionBox.className = "relative border-2 border-dashed border-slate-300 rounded-xl h-64 flex flex-col items-center justify-center text-center bg-slate-50 mb-6";
+            runBtn.textContent = "Analyzing in Browser...";
+            interactionBox.className = "relative border-2 border-dashed border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-white mb-6";
 
-            const formData = new FormData();
-            formData.append("file", selectedFile);
+            const img = new Image();
+            img.src = URL.createObjectURL(selectedFile);
+            
+            img.onload = async () => {
+                try {
+                    const tensor = processImage(img);
+                    const feeds = { input: tensor };
+                    
+                    // Run WebAssembly Inference
+                    const results = await session.run(feeds);
+                    const logit = results.output.data[0];
+                    const prob = sigmoid(logit);
+                    
+                    const diagnosis = prob >= 0.5 ? "PNEUMONIA" : "NORMAL";
+                    const confidence = prob >= 0.5 ? prob : 1 - prob;
 
-            try {
-                // Connect to local Python Backend
-                const response = await fetch("http://127.0.0.1:8000/predict", {
-                    method: "POST",
-                    body: formData
-                });
-                
-                if (!response.ok) throw new Error("Backend error");
-                const data = await response.json();
-
-                // Swap the box content out for the Prediction Result
-                const isPneumonia = data.diagnosis === "PNEUMONIA";
-                const color = isPneumonia ? "red" : "emerald";
-                
-                interactionBox.className = `relative border-2 border-solid border-${color}-400 rounded-xl h-64 flex flex-col items-center justify-center text-center bg-${color}-50 mb-6 cursor-pointer`;
-                
-                boxContent.innerHTML = `
-                    <h2 class="text-xs font-bold text-${color}-600 uppercase tracking-widest mb-1">Prediction</h2>
-                    <div class="text-4xl font-black text-${color}-600 mb-2">${data.diagnosis}</div>
-                    <div class="text-sm font-mono text-slate-700 font-bold">Accuracy Probability: ${data.confidence}</div>
-                    <div class="text-xs text-slate-400 mt-4">(Click anywhere to test a new image)</div>
-                `;
-
-            } catch (error) {
-                // Handle Backend Offline
-                interactionBox.className = "relative border-2 border-solid border-amber-400 rounded-xl h-64 flex flex-col items-center justify-center text-center bg-amber-50 mb-6 cursor-pointer";
-                boxContent.innerHTML = `
-                    <div class="text-xl font-bold text-amber-600 mb-2">Connection Error</div>
-                    <div class="text-sm text-slate-600">Could not reach the Python backend.</div>
-                    <div class="text-xs text-slate-400 mt-4">(Ensure 'uvicorn api:app' is running in your terminal)</div>
-                `;
-            } finally {
-                runBtn.disabled = false;
-                runBtn.textContent = "Run";
-            }
+                    interactionBox.className = "relative border-2 border-solid border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-white mb-6 cursor-pointer";
+                    boxContent.innerHTML = `
+                        <h2 class="text-xs font-bold uppercase tracking-widest mb-1 text-gray-500">Prediction</h2>
+                        <div class="text-5xl font-black mb-2">${diagnosis}</div>
+                        <div class="text-sm font-mono font-bold">Probability: ${(confidence * 100).toFixed(2)}%</div>
+                        <div class="text-xs text-gray-400 mt-4">(Click anywhere to test a new image)</div>
+                    `;
+                } catch (error) {
+                    console.error(error);
+                    boxTitle.textContent = "Error analyzing image.";
+                } finally {
+                    runBtn.disabled = false;
+                    runBtn.textContent = "Run Edge Inference";
+                }
+            };
         });
     </script>
 </body>
