@@ -26,8 +26,11 @@
             Run Edge Inference
         </button>
 
-        <p class="mt-8 text-xs text-gray-500 text-center leading-relaxed font-medium">
-            <strong>Disclaimer:</strong> This tool is specifically designed to classify chest X-rays for pneumonia. It does not in any manner guarantee accuracy. No health decisions should be based upon this binary classification. Always consult a qualified healthcare professional or doctor for medical advice and diagnosis, not this program.
+        <p class="mt-8 text-[10px] text-gray-500 text-center uppercase tracking-widest font-bold border-t border-gray-100 pt-6">
+            Important Notice
+        </p>
+        <p class="mt-2 text-xs text-gray-400 text-center leading-relaxed font-medium italic">
+            This tool is specifically for chest X-rays identifying pneumonia and does not in any manner guarantee accuracy. No health decisions should be based upon this binary classification. Users should consult a qualified healthcare professional or doctor for medical advice and diagnosis, not this program.
         </p>
     </main>
 
@@ -47,10 +50,9 @@
         async function loadModel() {
             try {
                 session = await ort.InferenceSession.create('./model.onnx', { executionProviders: ['wasm'] });
-                console.log('Model loaded successfully.');
+                console.log('Edge Model Ready.');
             } catch (e) {
-                console.error('Failed to load model', e);
-                boxSubtitle.textContent = "Error loading model. Check console.";
+                console.error('Model Load Failed', e);
             }
         }
         loadModel();
@@ -70,7 +72,7 @@
             selectedFile = file;
             boxTitle.textContent = file.name;
             boxTitle.className = "text-xl font-black";
-            boxSubtitle.textContent = "Ready to analyze locally.";
+            boxSubtitle.textContent = "Image verified. Ready for scan.";
             interactionBox.className = "relative border-2 border-solid border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-gray-50 cursor-pointer transition-all mb-6";
         }
 
@@ -78,10 +80,8 @@
             ctx.drawImage(imageElement, 0, 0, 224, 224);
             const imageData = ctx.getImageData(0, 0, 224, 224).data;
             const float32Data = new Float32Array(3 * 224 * 224);
-            
             const mean = [0.485, 0.456, 0.406];
             const std = [0.229, 0.224, 0.225];
-
             for (let i = 0; i < 224 * 224; i++) {
                 float32Data[i] = ((imageData[i * 4] / 255.0) - mean[0]) / std[0];
                 float32Data[i + 224 * 224] = ((imageData[i * 4 + 1] / 255.0) - mean[1]) / std[1];
@@ -90,45 +90,32 @@
             return new ort.Tensor('float32', float32Data, [1, 3, 224, 224]);
         }
 
-        function sigmoid(z) {
-            return 1 / (1 + Math.exp(-z));
-        }
+        function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
 
         runBtn.addEventListener('click', async () => {
-            if (!selectedFile || !session) {
-                alert("Please select an image and wait for the model to load.");
-                return;
-            }
-
+            if (!selectedFile || !session) return;
             runBtn.disabled = true;
-            runBtn.textContent = "Analyzing in Browser...";
-            interactionBox.className = "relative border-2 border-dashed border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-white mb-6";
-
+            runBtn.textContent = "Scanning...";
             const img = new Image();
             img.src = URL.createObjectURL(selectedFile);
-            
             img.onload = async () => {
                 try {
                     const tensor = processImage(img);
                     const feeds = { input: tensor };
-                    
                     const results = await session.run(feeds);
                     const logit = results.output.data[0];
                     const prob = sigmoid(logit);
-                    
                     const diagnosis = prob >= 0.5 ? "PNEUMONIA" : "NORMAL";
                     const confidence = prob >= 0.5 ? prob : 1 - prob;
-
                     interactionBox.className = "relative border-2 border-solid border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-white mb-6 cursor-pointer";
                     boxContent.innerHTML = `
-                        <h2 class="text-xs font-bold uppercase tracking-widest mb-1 text-gray-500">Prediction</h2>
+                        <h2 class="text-[10px] font-bold uppercase tracking-[0.2em] mb-2 text-gray-400">Scan Results</h2>
                         <div class="text-5xl font-black mb-2">${diagnosis}</div>
-                        <div class="text-sm font-mono font-bold">Probability: ${(confidence * 100).toFixed(2)}%</div>
-                        <div class="text-xs text-gray-400 mt-4">(Click anywhere to test a new image)</div>
+                        <div class="text-xs font-mono font-bold tracking-tight text-gray-500">Classification Confidence: ${(confidence * 100).toFixed(2)}%</div>
+                        <div class="text-[10px] text-gray-300 mt-6 italic">Click box to upload another X-ray</div>
                     `;
                 } catch (error) {
                     console.error(error);
-                    boxTitle.textContent = "Error analyzing image.";
                 } finally {
                     runBtn.disabled = false;
                     runBtn.textContent = "Run Edge Inference";
