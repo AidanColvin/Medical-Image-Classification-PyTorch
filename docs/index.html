@@ -27,7 +27,7 @@
         </button>
 
         <p class="mt-8 text-xs text-gray-500 text-center leading-relaxed font-medium">
-            <strong>Disclaimer:</strong> This tool should not be used for medical diagnostics or health decisions. The project objective was to train a model on a large dataset of X-ray images to distinguish between healthy lungs and those exhibiting pneumonia.
+            <strong>Disclaimer:</strong> This tool is specifically designed to classify chest X-rays for pneumonia. It does not in any manner guarantee accuracy. No health decisions should be based upon this binary classification. Always consult a qualified healthcare professional or doctor for medical advice and diagnosis, not this program.
         </p>
     </main>
 
@@ -44,10 +44,8 @@
         let selectedFile = null;
         let session = null;
 
-        // 1. Load the ONNX model automatically in the background
         async function loadModel() {
             try {
-                // Pointing to the model.onnx file in the same directory
                 session = await ort.InferenceSession.create('./model.onnx', { executionProviders: ['wasm'] });
                 console.log('Model loaded successfully.');
             } catch (e) {
@@ -76,7 +74,6 @@
             interactionBox.className = "relative border-2 border-solid border-black rounded-3xl h-64 flex flex-col items-center justify-center text-center bg-gray-50 cursor-pointer transition-all mb-6";
         }
 
-        // Image Preprocessing (Matches PyTorch transforms)
         function processImage(imageElement) {
             ctx.drawImage(imageElement, 0, 0, 224, 224);
             const imageData = ctx.getImageData(0, 0, 224, 224).data;
@@ -86,10 +83,9 @@
             const std = [0.229, 0.224, 0.225];
 
             for (let i = 0; i < 224 * 224; i++) {
-                // Normalize RGB channels
-                float32Data[i] = ((imageData[i * 4] / 255.0) - mean[0]) / std[0]; // R
-                float32Data[i + 224 * 224] = ((imageData[i * 4 + 1] / 255.0) - mean[1]) / std[1]; // G
-                float32Data[i + 2 * 224 * 224] = ((imageData[i * 4 + 2] / 255.0) - mean[2]) / std[2]; // B
+                float32Data[i] = ((imageData[i * 4] / 255.0) - mean[0]) / std[0];
+                float32Data[i + 224 * 224] = ((imageData[i * 4 + 1] / 255.0) - mean[1]) / std[1];
+                float32Data[i + 2 * 224 * 224] = ((imageData[i * 4 + 2] / 255.0) - mean[2]) / std[2];
             }
             return new ort.Tensor('float32', float32Data, [1, 3, 224, 224]);
         }
@@ -116,7 +112,6 @@
                     const tensor = processImage(img);
                     const feeds = { input: tensor };
                     
-                    // Run WebAssembly Inference
                     const results = await session.run(feeds);
                     const logit = results.output.data[0];
                     const prob = sigmoid(logit);
